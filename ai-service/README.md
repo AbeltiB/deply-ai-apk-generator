@@ -1,75 +1,57 @@
 # AI APK Generator (API-only mode)
 
-This service runs as a **standalone FastAPI API** without requiring Celery, Redis, PostgreSQL, or Flower.
+This service now runs as a **standalone FastAPI API** without requiring Celery, Redis, PostgreSQL, or Flower.
 
 ## Prerequisites
 - Docker Desktop (or Docker Engine + Compose plugin)
 - Poetry
 - Python 3.12+
 
-## Atomic step-by-step flow (your desired workflow)
+## Quick start
 
-### Step 1 — start the API
-Option A (Docker):
+### 1) Run from Docker Compose (`infra/`)
 ```bash
 cd infra
 docker compose up --build
 ```
+This starts only one container: `aiapk-api`.
 
-Option B (Poetry):
+### 2) Run directly with Poetry (`ai-service/`)
 ```bash
 cd ai-service
 poetry install
 poetry run uvicorn app.main:app --reload
 ```
 
-### Step 2 — send a generate request
-```bash
-curl -X POST http://127.0.0.1:8000/api/v1/generate \
-  -H "Content-Type: application/json" \
-  -d '{
-    "prompt": "Create a todo app with add/delete/complete",
-    "user_id": "debug-user"
-  }'
-```
-
-You will receive a `task_id`.
-
-### Step 3 — watch processing in console
-When request starts, console logs show events like:
-- `api.generation.started`
-- `api.generation.pipeline_completed`
-- `api.generation.completed`
-
-### Step 4 — check task progress/status
-```bash
-curl http://127.0.0.1:8000/api/v1/task/<TASK_ID>
-```
-
-### Step 5 — get converted result JSON
-```bash
-curl http://127.0.0.1:8000/api/v1/results/<TASK_ID>
-```
-
-### Step 6 — get export JSON for your downstream system
-```bash
-curl http://127.0.0.1:8000/api/v1/results/<TASK_ID>/export
-```
-
-### Step 7 — download export JSON file (attachment)
-```bash
-curl -OJ http://127.0.0.1:8000/api/v1/results/<TASK_ID>/download
-```
-
-> Note: `/results/{task_id}` and export/download endpoints now attempt inline recovery for stuck queued/processing tasks (when recoverable payload exists), so you can still obtain final JSON for testing.
+Open:
+- `http://127.0.0.1:8000/docs`
+- `http://127.0.0.1:8000/health/live`
 
 ## Windows Docker Desktop error
 If you see:
 
 `open //./pipe/dockerDesktopLinuxEngine: The system cannot find the file specified`
 
+
+
+## Docker Desktop troubleshooting (Windows)
+
+If `docker compose up --build` fails with an error like:
+
+`open //./pipe/dockerDesktopLinuxEngine: The system cannot find the file specified`
+
+it means Docker Desktop/Linux engine is not running yet.
+
+1. Start **Docker Desktop** and wait until status is `Engine running`.
+2. Ensure Docker is using **Linux containers**.
+3. Verify from terminal:
+   - `docker version`
+   - `docker context ls` (current context should be `desktop-linux`)
+4. Then run from `infra/`:
+   - `docker compose up --build`
+
 Then Docker Desktop engine is not running. Fix it by:
-1. Start Docker Desktop and wait until **Engine running**.
+1. Start Docker Desktop and wait until "Engine running".
 2. Ensure Linux containers mode is enabled.
 3. Verify:
    - `docker version`

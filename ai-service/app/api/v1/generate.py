@@ -124,15 +124,6 @@ async def _process_generation_request(ai_request: AIRequest, task_data: Dict[str
     """Run generation pipeline locally and persist status/result in cache."""
     task_id = ai_request.task_id
 
-    logger.info(
-        "api.generation.started",
-        extra={
-            "task_id": task_id,
-            "user_id": ai_request.user_id,
-            "prompt_preview": ai_request.prompt[:120],
-        },
-    )
-
     try:
         task_data["status"] = TaskStatus.PROCESSING
         task_data["message"] = "Processing request"
@@ -146,8 +137,6 @@ async def _process_generation_request(ai_request: AIRequest, task_data: Dict[str
         raw_result = await default_pipeline.execute(ai_request)
         converted_result = format_pipeline_output(raw_result)
 
-        logger.info("api.generation.pipeline_completed", extra={"task_id": task_id})
-
         task_data["status"] = TaskStatus.COMPLETED
         task_data["message"] = "Generation completed successfully"
         task_data["progress"] = 100
@@ -156,7 +145,6 @@ async def _process_generation_request(ai_request: AIRequest, task_data: Dict[str
         task_data["completed_at"] = datetime.now(timezone.utc).isoformat() + "Z"
         task_data["updated_at"] = datetime.now(timezone.utc).isoformat() + "Z"
         await cache_manager.set(f"task:{task_id}", task_data, ttl=86400)
-        logger.info("api.generation.completed", extra={"task_id": task_id, "status": "completed"})
 
     except Exception as exc:
         logger.error(
@@ -171,7 +159,6 @@ async def _process_generation_request(ai_request: AIRequest, task_data: Dict[str
         task_data["error"] = {"message": str(exc)}
         task_data["updated_at"] = datetime.now(timezone.utc).isoformat() + "Z"
         await cache_manager.set(f"task:{task_id}", task_data, ttl=86400)
-        logger.info("api.generation.completed", extra={"task_id": task_id, "status": "failed"})
 
 async def get_task_or_404(task_id: str) -> Dict[str, Any]:
     """Get task from Redis or raise 404"""
