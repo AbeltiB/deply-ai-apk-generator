@@ -118,6 +118,48 @@ class SystemStatsResponse(BaseModel):
     pipeline_stats: Dict[str, Any]
 
 
+
+
+async def _process_generation_request(ai_request: AIRequest, task_data: Dict[str, Any]) -> None:
+    """Run generation pipeline locally and persist status/result in cache."""
+    task_id = ai_request.task_id
+
+    try:
+        task_data["status"] = TaskStatus.PROCESSING
+        task_data["message"] = "Processing request"
+        task_data["progress"] = 10
+        task_data["updated_at"] = datetime.now(timezone.utc).isoformat() + "Z"
+        await cache_manager.set(f"task:{task_id}", task_data, ttl=86400)
+
+        from app.services.pipeline import default_pipeline
+        from app.utils.output_JSON_formatter import format_pipeline_output
+
+        raw_result = await default_pipeline.execute(ai_request)
+        converted_result = format_pipeline_output(raw_result)
+
+        task_data["status"] = TaskStatus.COMPLETED
+        task_data["message"] = "Generation completed successfully"
+        task_data["progress"] = 100
+        task_data["result"] = converted_result
+        task_data["raw_result"] = raw_result
+        task_data["completed_at"] = datetime.now(timezone.utc).isoformat() + "Z"
+        task_data["updated_at"] = datetime.now(timezone.utc).isoformat() + "Z"
+        await cache_manager.set(f"task:{task_id}", task_data, ttl=86400)
+
+    except Exception as exc:
+        logger.error(
+            "api.generation.processing_failed",
+            extra={"task_id": task_id, "error": str(exc)},
+            exc_info=True,
+        )
+
+        task_data["status"] = TaskStatus.FAILED
+        task_data["message"] = "Generation failed"
+        task_data["progress"] = 0
+        task_data["error"] = {"message": str(exc)}
+        task_data["updated_at"] = datetime.now(timezone.utc).isoformat() + "Z"
+        await cache_manager.set(f"task:{task_id}", task_data, ttl=86400)
+
 async def get_task_or_404(task_id: str) -> Dict[str, Any]:
     """Get task from Redis or raise 404"""
     with log_context(task_id=task_id, operation="get_task"):
@@ -287,56 +329,14 @@ async def generate_app(
                 }
             )
         
-        # Publish to RabbitMQ in background
-        async def publish_to_queue():
-            """Publish request to RabbitMQ queue"""
-            try:
-                with log_context(
-                    correlation_id=correlation_id,
-                    task_id=task_id,
-                    operation="publish_to_queue"
-                ):
-                    success = await queue_manager.publish_response(ai_request.dict())
-                    
-                    if success:
-                        logger.info(
-                            "api.queue.published",
-                            extra={
-                                "queue": "ai-requests",
-                                "task_id": task_id
-                            }
-                        )
-                        
-                        task_data["status"] = TaskStatus.PROCESSING
-                        task_data["message"] = "Request picked up by processor"
-                        task_data["updated_at"] = datetime.now(timezone.utc).isoformat() + "Z"
-                        await cache_manager.set(f"task:{task_id}", task_data, ttl=86400)
-                    else:
-                        logger.error(
-                            "api.queue.publish_failed",
-                            extra={
-                                "queue": "ai-requests",
-                                "task_id": task_id
-                            }
-                        )
-                        
-                        task_data["status"] = TaskStatus.FAILED
-                        task_data["message"] = "Failed to publish to queue"
-                        task_data["updated_at"] = datetime.now(timezone.utc).isoformat() + "Z"
-                        await cache_manager.set(f"task:{task_id}", task_data, ttl=86400)
-                        
-            except Exception as e:
-                logger.error(
-                    "api.queue.publish_error",
-                    extra={
-                        "queue": "ai-requests",
-                        "task_id": task_id,
-                        "error": str(e)
-                    },
-                    exc_info=True
-                )
-        
-        background_tasks.add_task(publish_to_queue)
+        # Publish debug event and process generation in-process for standalone mode
+        await queue_manager.publish_response({
+            "type": "generation_requested",
+            "task_id": task_id,
+            "timestamp": datetime.now(timezone.utc).isoformat() + "Z"
+        })
+
+        background_tasks.add_task(_process_generation_request, ai_request, task_data.copy())
         
         # Create response
         response = GenerateResponse(
