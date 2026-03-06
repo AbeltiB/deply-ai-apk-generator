@@ -17,7 +17,6 @@ RUN apt-get update && apt-get install -y \
     gcc \
     g++ \
     make \
-    libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Poetry
@@ -44,7 +43,6 @@ FROM python:3.12-slim AS production
 
 # Install runtime dependencies only
 RUN apt-get update && apt-get install -y \
-    libpq5 \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
