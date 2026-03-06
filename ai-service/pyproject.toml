@@ -1,7 +1,7 @@
 [project]
 name = "ai-service"
 version = "0.1.0"
-description = "AI-powered mobile app generation service"
+description = "Standalone FastAPI service without Celery/Redis/Postgres runtime dependencies"
 authors = [
     {name = "Abelti Beshana", email = "obsidian.being.tech@gmail.com"}
 ]
@@ -14,12 +14,6 @@ dependencies = [
     # Web Framework
     "fastapi>=0.115.6,<0.116.0",
     "uvicorn[standard]>=0.34.0,<0.35.0",
-    
-    # Messaging & Caching (Redis only)
-    "redis[hiredis]>=5.2.1,<6.0.0",
-    
-    # Database
-    "asyncpg>=0.30.0,<0.31.0",
     
     # Data Validation
     "pydantic>=2.10.6,<3.0.0",
@@ -37,11 +31,6 @@ dependencies = [
     "rich>=14.2.0,<15.0.0",
     "tabulate>=0.9.0,<0.10.0",
     "rapidfuzz>=3.14.3,<4.0.0",
-    
-    # Task Queue & Monitoring
-    "celery>=5.6.2,<6.0.0",
-    "kombu>=5.6.2,<6.0.0",
-    "flower>=2.0.1,<3.0.0",
     
     # Logging & Observability
     "prometheus-client>=0.21.1,<0.22.0",
