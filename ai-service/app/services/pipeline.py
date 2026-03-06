@@ -44,19 +44,6 @@ from app.utils.output_JSON_formatter import format_pipeline_output, validate_out
 logger = get_logger(__name__)
 
 
-def _safe_parse_cached_payload(value: Any, section: str) -> Any:
-    """Parse cached payload sections that may be stored as JSON strings."""
-    if isinstance(value, str):
-        try:
-            return json.loads(value)
-        except Exception as e:
-            logger.warning(
-                "pipeline.cache.invalid_json",
-                extra={"section": section, "error": str(e), "error_type": type(e).__name__}
-            )
-            return None
-    return value
-
 
 class PipelineStage:
     """Base class for pipeline stages"""
@@ -82,32 +69,32 @@ class PipelineStage:
         )
 
 
-class RateLimitStage(PipelineStage):
-    """Stage 1: Check rate limits"""
+# class RateLimitStage(PipelineStage):
+#     """Stage 1: Check rate limits"""
     
-    def __init__(self):
-        super().__init__("rate_limit")
+#     def __init__(self):
+#         super().__init__("rate_limit")
     
-    async def execute(self, request: AIRequest, context: Dict[str, Any]) -> Dict[str, Any]:
-        """Check user rate limits"""
+#     async def execute(self, request: AIRequest, context: Dict[str, Any]) -> Dict[str, Any]:
+#         """Check user rate limits"""
         
-        allowed, rate_info = await rate_limiter.check_rate_limit(request.user_id)
+#         allowed, rate_info = await rate_limiter.check_rate_limit(request.user_id)
         
-        if not allowed:
-            logger.warning(
-                "pipeline.rate_limit.exceeded",
-                extra={
-                    "user_id": request.user_id,
-                    "limit": rate_info.get('limit'),
-                    "retry_after": rate_info.get('retry_after')
-                }
-            )
+#         if not allowed:
+#             logger.warning(
+#                 "pipeline.rate_limit.exceeded",
+#                 extra={
+#                     "user_id": request.user_id,
+#                     "limit": rate_info.get('limit'),
+#                     "retry_after": rate_info.get('retry_after')
+#                 }
+#             )
             
-            raise Exception(f"Rate limit exceeded. Retry after {rate_info.get('retry_after', 0)} seconds")
+#             raise Exception(f"Rate limit exceeded. Retry after {rate_info.get('retry_after', 0)} seconds")
         
-        context['rate_limit_info'] = rate_info
+#         context['rate_limit_info'] = rate_info
         
-        return {"passed": True, "remaining": rate_info.get('remaining', 0)}
+#         return {"passed": True, "remaining": rate_info.get('remaining', 0)}
 
 
 class ValidationStage(PipelineStage):
@@ -128,47 +115,47 @@ class ValidationStage(PipelineStage):
         return {"valid": True}
 
 
-class CacheCheckStage(PipelineStage):
-    """Stage 3: Check semantic cache"""
+# class CacheCheckStage(PipelineStage):
+#     """Stage 3: Check semantic cache"""
     
-    def __init__(self):
-        super().__init__("cache_check")
+#     def __init__(self):
+#         super().__init__("cache_check")
     
-    async def execute(self, request: AIRequest, context: Dict[str, Any]) -> Dict[str, Any]:
-        """Check for cached result"""
+#     async def execute(self, request: AIRequest, context: Dict[str, Any]) -> Dict[str, Any]:
+#         """Check for cached result"""
 
-        cache_enabled = settings.semantic_cache_enabled and not settings.is_development
-        if not cache_enabled:
-            logger.info(
-                "pipeline.cache.disabled",
-                extra={"task_id": request.task_id, "environment": settings.environment}
-            )
-            context['cache_hit'] = False
-            context['cached_result'] = None
-            return {'cache_hit': False, 'disabled': True}
+#         cache_enabled = settings.semantic_cache_enabled and not settings.is_development
+#         if not cache_enabled:
+#             logger.info(
+#                 "pipeline.cache.disabled",
+#                 extra={"task_id": request.task_id, "environment": settings.environment}
+#             )
+#             context['cache_hit'] = False
+#             context['cached_result'] = None
+#             return {'cache_hit': False, 'disabled': True}
 
-        cached_result = await semantic_cache.get_cached_result(
-            prompt=request.prompt,
-            user_id=request.user_id
-        )
+#         cached_result = await semantic_cache.get_cached_result(
+#             prompt=request.prompt,
+#             user_id=request.user_id
+#         )
 
-        if cached_result:
-            logger.info(
-                "pipeline.cache.hit",
-                extra={"task_id": request.task_id}
-            )
-            context['cache_hit'] = True
-            context['cached_result'] = cached_result.get('result', {})
-            return {'cache_hit': True, 'result': cached_result}
+#         if cached_result:
+#             logger.info(
+#                 "pipeline.cache.hit",
+#                 extra={"task_id": request.task_id}
+#             )
+#             context['cache_hit'] = True
+#             context['cached_result'] = cached_result.get('result', {})
+#             return {'cache_hit': True, 'result': cached_result}
         
-        logger.info(
-            "pipeline.cache.miss",
-            extra={"task_id": request.task_id}
-        )
+#         logger.info(
+#             "pipeline.cache.miss",
+#             extra={"task_id": request.task_id}
+#         )
         
-        context['cache_hit'] = False
+#         context['cache_hit'] = False
         
-        return {"cache_hit": False}
+#         return {"cache_hit": False}
 
 
 class IntentAnalysisStage(PipelineStage):
@@ -611,77 +598,77 @@ class BlocklyGenerationStage(PipelineStage):
         }
 
 
-class CacheSaveStage(PipelineStage):
-    """Stage 9: Save result to cache"""
+# class CacheSaveStage(PipelineStage):
+#     """Stage 9: Save result to cache"""
     
-    def __init__(self):
-        super().__init__("cache_save")
+#     def __init__(self):
+#         super().__init__("cache_save")
     
-    async def execute(self, request: AIRequest, context: Dict[str, Any]) -> Dict[str, Any]:
-        """Save result to semantic cache"""
+#     async def execute(self, request: AIRequest, context: Dict[str, Any]) -> Dict[str, Any]:
+#         """Save result to semantic cache"""
 
-        cache_enabled = settings.semantic_cache_enabled and not settings.is_development
-        if not cache_enabled:
-            logger.info(
-                "pipeline.cache_save.disabled",
-                extra={"task_id": request.task_id, "environment": settings.environment}
-            )
-            return {"skipped": True, "reason": "cache_disabled"}
+#         cache_enabled = settings.semantic_cache_enabled and not settings.is_development
+#         if not cache_enabled:
+#             logger.info(
+#                 "pipeline.cache_save.disabled",
+#                 extra={"task_id": request.task_id, "environment": settings.environment}
+#             )
+#             return {"skipped": True, "reason": "cache_disabled"}
         
-        # Skip if already from cache
-        if context.get('cache_hit'):
-            logger.info("pipeline.cache_save.skipped_already_cached")
-            return {"skipped": True, "reason": "already_cached"}
+#         # Skip if already from cache
+#         if context.get('cache_hit'):
+#             logger.info("pipeline.cache_save.skipped_already_cached")
+#             return {"skipped": True, "reason": "already_cached"}
         
-        # Prepare result for caching
-        architecture = context.get('architecture')
-        layouts = context.get('layouts', {})
-        blockly = context.get('blockly')
+#         # Prepare result for caching
+#         architecture = context.get('architecture')
+#         layouts = context.get('layouts', {})
+#         blockly = context.get('blockly')
         
-        if not all([architecture, blockly]):
-            logger.warning("pipeline.cache_save.incomplete_result")
-            return {"skipped": True, "reason": "incomplete_result"}
+#         if not all([architecture, blockly]):
+#             logger.warning("pipeline.cache_save.incomplete_result")
+#             return {"skipped": True, "reason": "incomplete_result"}
         
-        try:
-            # Convert layouts to dict
-            layouts_dict = {}
-            if layouts:
-                for screen_id, layout in layouts.items():
-                    if hasattr(layout, 'dict'):
-                        layouts_dict[screen_id] = layout.dict()
-                    elif isinstance(layout, dict):
-                        layouts_dict[screen_id] = layout
-                    else:
-                        layouts_dict[screen_id] = str(layout)
+#         try:
+#             # Convert layouts to dict
+#             layouts_dict = {}
+#             if layouts:
+#                 for screen_id, layout in layouts.items():
+#                     if hasattr(layout, 'dict'):
+#                         layouts_dict[screen_id] = layout.dict()
+#                     elif isinstance(layout, dict):
+#                         layouts_dict[screen_id] = layout
+#                     else:
+#                         layouts_dict[screen_id] = str(layout)
             
-            # Build cache result
-            cache_result = {
-                'architecture': architecture.dict() if hasattr(architecture, 'dict') else str(architecture),
-                'layout': layouts_dict,
-                'blockly': blockly
-            }
+#             # Build cache result
+#             cache_result = {
+#                 'architecture': architecture.dict() if hasattr(architecture, 'dict') else str(architecture),
+#                 'layout': layouts_dict,
+#                 'blockly': blockly
+#             }
             
-            # Save to cache
-            await semantic_cache.cache_result(
-                prompt=request.prompt,
-                user_id=request.user_id,
-                result=cache_result
-            )
+#             # Save to cache
+#             await semantic_cache.cache_result(
+#                 prompt=request.prompt,
+#                 user_id=request.user_id,
+#                 result=cache_result
+#             )
             
-            logger.info(
-                "pipeline.cache_save.complete",
-                extra={"task_id": request.task_id}
-            )
+#             logger.info(
+#                 "pipeline.cache_save.complete",
+#                 extra={"task_id": request.task_id}
+#             )
             
-            return {"cached": True}
+#             return {"cached": True}
             
-        except Exception as e:
-            logger.error(
-                "pipeline.cache_save.failed",
-                extra={"error": str(e)},
-                exc_info=e
-            )
-            return {"cached": False, "error": str(e)}
+#         except Exception as e:
+#             logger.error(
+#                 "pipeline.cache_save.failed",
+#                 extra={"error": str(e)},
+#                 exc_info=e
+#             )
+#             return {"cached": False, "error": str(e)}
 
 
 class Pipeline:
@@ -689,15 +676,15 @@ class Pipeline:
     
     def __init__(self):
         self.stages = [
-            RateLimitStage(),
+            #RateLimitStage(),
             ValidationStage(),
-            CacheCheckStage(),
+            #CacheCheckStage(),
             IntentAnalysisStage(),
             ContextBuildingStage(),
             ArchitectureGenerationStage(),
             LayoutGenerationStage(),
             BlocklyGenerationStage(),
-            CacheSaveStage()
+            #CacheSaveStage()
         ]
         
         logger.info(
@@ -782,7 +769,7 @@ class Pipeline:
                         })
                         
                         # If this is a critical stage, we might want to fail fast
-                        if stage.name in ['rate_limit', 'validation', 'intent_analysis']:
+                        if stage.name in [ 'validation', 'intent_analysis']:
                             raise
                         
                         # For generation stages, we can continue with fallbacks
@@ -1023,7 +1010,7 @@ if __name__ == "__main__":
             print(f"\n✅ Pipeline completed successfully!")
             print(f"\nResult Summary:")
             print(f"  Total Time: {result['metadata']['total_time_ms']}ms")
-            print(f"  Cache Hit: {result['metadata']['cache_hit']}")
+            #print(f"  Cache Hit: {result['metadata']['cache_hit']}")
             print(f"  Architecture: {result['architecture']['app_type'] if result['architecture'] and isinstance(result['architecture'], dict) else 'None'}")
             print(f"  Layouts: {len(result['layout'])} screens")
             print(f"  Blockly Blocks: {len(result['blockly'].get('blocks', {}).get('blocks', [])) if isinstance(result.get('blockly'), dict) else 0}")

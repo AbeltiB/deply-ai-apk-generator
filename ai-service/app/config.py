@@ -32,25 +32,6 @@ class Settings(BaseSettings):
     cors_origins: list[str] = ["http://localhost:3000", "http://localhost:8000"]
 
     # -------------------------
-    # CELERY SETTINGS
-    # -------------------------
-    celery_broker_url: str = "redis://localhost:6379/0"
-    celery_result_backend: str = "redis://localhost:6379/1"
-    celery_task_serializer: str = "json"
-    celery_result_serializer: str = "json"
-    celery_accept_content: list[str] = ["json"]
-    celery_timezone: str = "UTC"
-    celery_enable_utc: bool = True
-    celery_task_track_started: bool = True
-    celery_task_time_limit: int = 1800
-    celery_task_soft_time_limit: int = 1500
-    celery_worker_prefetch_multiplier: int = 1
-    celery_worker_max_tasks_per_child: int = 100
-    celery_task_acks_late: bool = True
-    celery_task_reject_on_worker_lost: bool = True
-    celery_result_expires: int = 86400
-
-    # -------------------------
     # LLM SETTINGS (Llama3 Only)
     # -------------------------
     llama3_api_url: str = "https://fastchat.ideeza.com/v1/chat/completions"
@@ -83,52 +64,6 @@ class Settings(BaseSettings):
     prompt_cache_ttl: int = 3600
     system_prompt_path: str = "prompts/system"
     user_prompt_path: str = "prompts/user"
-
-    # -------------------------
-    # CELERY + REDIS QUEUES
-    # -------------------------
-    celery_queue_generation: str = "generation"
-    celery_queue_default: str = "default"
-
-    # -------------------------
-    # REDIS
-    # -------------------------
-    redis_url: str = "redis://localhost:6379/0"
-    redis_host: str = "localhost"
-    redis_port: int = 6379
-    redis_db: int = 0
-    redis_password: Optional[str] = None
-    redis_cache_ttl: int = 86400
-    redis_semantic_cache_ttl: int = 604800
-    redis_session_ttl: int = 28800
-    redis_cache_similarity_threshold: float = 0.95
-    semantic_cache_enabled: bool = False
-    redis_pool_size: int = 10
-    redis_socket_timeout: int = 5
-
-    # -------------------------
-    # POSTGRESQL
-    # -------------------------
-    postgres_host: str = "localhost"
-    postgres_port: int = 5432
-    postgres_db: str = "appdb"
-    postgres_user: str = "admin"
-    postgres_password: str = "devpass"
-    postgres_min_connections: int = 5
-    postgres_max_connections: int = 20
-    postgres_connection_timeout: int = 30
-    postgres_statement_timeout: int = 30000
-    postgres_pool_recycle: int = 3600
-
-    
-
-    @property
-    def database_url(self) -> str:
-        return f"postgresql://{self.postgres_user}:{self.postgres_password}@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
-
-    @property
-    def postgres_dsn(self) -> str:
-        return self.database_url
 
     # -------------------------
     # PROCESSING & RETRIES
@@ -236,13 +171,12 @@ class Settings(BaseSettings):
         env_file=".env",
         env_file_encoding="utf-8",
         case_sensitive=False,
-        extra="allow",  # crucial fix
+        extra="allow", 
         env_prefix="APP_",
         validate_default=True,
     )
 
 
-@lru_cache(maxsize=1)
 def get_settings() -> Settings:
     logger.info("Initializing settings...")
     return Settings()
