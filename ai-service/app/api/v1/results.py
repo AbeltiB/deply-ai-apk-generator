@@ -15,10 +15,78 @@ import json
 
 from app.core.cache import cache_manager
 from app.utils.logging import get_logger, log_context
-from app.utils.output_JSON_formatter import get_export_ready_json
+from app.utils.output_JSON_formatter import get_export_ready_json, format_pipeline_output
+from app.models.schemas import AIRequest
 
 router = APIRouter()
 logger = get_logger(__name__)
+
+
+async def _get_task_with_recovery(task_id: str) -> Dict[str, Any]:
+    """Load task and attempt inline completion when stuck with no result."""
+    task_data = await cache_manager.get(f"task:{task_id}")
+    if not task_data:
+        return {}
+
+    status_value = task_data.get("status", "pending")
+    if status_value in ["queued", "processing"] and not task_data.get("result"):
+        task_data = await _attempt_inline_completion(task_id, task_data)
+
+    return task_data
+
+
+def _json_download_response(task_id: str, export_json: Dict[str, Any]) -> Response:
+    json_bytes = json.dumps(export_json, indent=2).encode("utf-8")
+    return Response(
+        content=json_bytes,
+        media_type="application/json",
+        headers={"Content-Disposition": f"attachment; filename=ideeza-project-{task_id}.json"},
+    )
+
+
+async def _attempt_inline_completion(task_id: str, task_data: Dict[str, Any]) -> Dict[str, Any]:
+    """Recover stuck queued/processing tasks by running pipeline inline."""
+    if task_data.get("result"):
+        return task_data
+
+    payload = task_data.get("request_payload")
+    if not payload:
+        return task_data
+
+    try:
+        task_data["status"] = "processing"
+        task_data["progress"] = max(int(task_data.get("progress", 0)), 15)
+        task_data["message"] = "Recovering processing task"
+        task_data["updated_at"] = datetime.now(timezone.utc).isoformat() + "Z"
+        await cache_manager.set(f"task:{task_id}", task_data, ttl=86400)
+
+        from app.services.pipeline import default_pipeline
+
+        ai_request = AIRequest(**payload)
+        raw_result = await default_pipeline.execute(ai_request)
+        converted_result = format_pipeline_output(raw_result)
+
+        task_data["status"] = "completed"
+        task_data["progress"] = 100
+        task_data["message"] = "Generation completed successfully"
+        task_data["result"] = converted_result
+        task_data["raw_result"] = raw_result
+        task_data["completed_at"] = datetime.now(timezone.utc).isoformat() + "Z"
+        task_data["updated_at"] = datetime.now(timezone.utc).isoformat() + "Z"
+        await cache_manager.set(f"task:{task_id}", task_data, ttl=86400)
+        return task_data
+    except Exception as exc:
+        logger.error(
+            "api.results.inline_recovery_failed",
+            extra={"task_id": task_id, "error": str(exc)},
+            exc_info=True,
+        )
+        task_data["status"] = "failed"
+        task_data["message"] = "Generation failed during inline recovery"
+        task_data["error"] = {"message": str(exc)}
+        task_data["updated_at"] = datetime.now(timezone.utc).isoformat() + "Z"
+        await cache_manager.set(f"task:{task_id}", task_data, ttl=86400)
+        return task_data
 
 
 # ============================================================================
@@ -208,8 +276,7 @@ async def export_result(
             extra={"task_id": task_id, "download": download}
         )
 
-        task_key = f"task:{task_id}"
-        task_data = await cache_manager.get(task_key)
+        task_data = await _get_task_with_recovery(task_id)
 
         if not task_data:
             logger.warning("api.results.export.not_found", extra={"task_id": task_id})
@@ -263,17 +330,48 @@ async def export_result(
 
         # If download requested, return as an attachment
         if download:
-            json_bytes = json.dumps(export_json, indent=2).encode("utf-8")
-            return Response(
-                content=json_bytes,
-                media_type="application/json",
-                headers={
-                    "Content-Disposition": f"attachment; filename=ideeza-project-{task_id}.json"
-                }
-            )
+            return _json_download_response(task_id, export_json)
 
         # Otherwise return plain JSON
         return JSONResponse(content=export_json)
+
+
+
+@router.get(
+    "/results/{task_id}/download",
+    tags=["Results"],
+    summary="Download export JSON file",
+    description="Same as /results/{task_id}/export?download=true with attachment headers."
+)
+async def download_result(task_id: str) -> Response:
+    with log_context(task_id=task_id, endpoint="/api/v1/results/download", method="GET"):
+        task_data = await _get_task_with_recovery(task_id)
+
+        if not task_data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={"error": "result_not_found", "message": f"No result found for task ID: {task_id}"},
+            )
+
+        if task_data.get("status") != "completed":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={
+                    "error": "result_not_ready",
+                    "message": f"Task is {task_data.get('status')}, cannot download",
+                    "status": task_data.get("status"),
+                },
+            )
+
+        converted = task_data.get("result", {})
+        if not converted:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail={"error": "result_incomplete", "message": "Completed task has no result payload"},
+            )
+
+        export_json = get_export_ready_json(converted)
+        return _json_download_response(task_id, export_json)
 
 @router.get(
     "/results/{task_id}",
@@ -295,9 +393,8 @@ async def get_result(task_id: str) -> Dict[str, Any]:
         )
         
         try:
-            # Get task data from Redis
-            task_key = f"task:{task_id}"
-            task_data = await cache_manager.get(task_key)
+            # Get task data and attempt recovery if stuck
+            task_data = await _get_task_with_recovery(task_id)
             
             if not task_data:
                 logger.warning(
@@ -324,7 +421,7 @@ async def get_result(task_id: str) -> Dict[str, Any]:
             
             # Check status
             current_status = task_data.get("status", "pending")
-            
+
             if current_status in ["queued", "processing"]:
                 logger.info(
                     "api.results.get.still_processing",
@@ -334,7 +431,7 @@ async def get_result(task_id: str) -> Dict[str, Any]:
                         "progress": task_data.get("progress", 0)
                     }
                 )
-                
+
                 # Return basic status info
                 return {
                     "task_id": task_id,
@@ -418,8 +515,7 @@ async def get_raw_result(task_id: str) -> Dict[str, Any]:
     """Get raw (pre-conversion) output for a completed task."""
 
     with log_context(task_id=task_id, endpoint="/api/v1/results/raw", method="GET"):
-        task_key = f"task:{task_id}"
-        task_data = await cache_manager.get(task_key)
+        task_data = await _get_task_with_recovery(task_id)
 
         if not task_data:
             raise HTTPException(
