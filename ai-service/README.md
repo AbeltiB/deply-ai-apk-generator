@@ -32,11 +32,21 @@ If you see:
 
 `open //./pipe/dockerDesktopLinuxEngine: The system cannot find the file specified`
 
-Then Docker Desktop engine is not running. Fix it by:
-1. Start Docker Desktop and wait until "Engine running".
-2. Ensure Linux containers mode is enabled.
-3. Verify:
+
+
+## Docker Desktop troubleshooting (Windows)
+
+If `docker compose up --build` fails with an error like:
+
+`open //./pipe/dockerDesktopLinuxEngine: The system cannot find the file specified`
+
+it means Docker Desktop/Linux engine is not running yet.
+
+1. Start **Docker Desktop** and wait until status is `Engine running`.
+2. Ensure Docker is using **Linux containers**.
+3. Verify from terminal:
    - `docker version`
-   - `docker context ls` (use `desktop-linux`)
-4. Re-run:
+   - `docker context ls` (current context should be `desktop-linux`)
+4. Then run from `infra/`:
    - `docker compose up --build`
+
