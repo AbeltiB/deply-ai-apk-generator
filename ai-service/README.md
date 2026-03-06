@@ -50,3 +50,11 @@ it means Docker Desktop/Linux engine is not running yet.
 4. Then run from `infra/`:
    - `docker compose up --build`
 
+Then Docker Desktop engine is not running. Fix it by:
+1. Start Docker Desktop and wait until "Engine running".
+2. Ensure Linux containers mode is enabled.
+3. Verify:
+   - `docker version`
+   - `docker context ls` (use `desktop-linux`)
+4. Re-run:
+   - `docker compose up --build`
