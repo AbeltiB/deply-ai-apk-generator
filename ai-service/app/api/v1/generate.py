@@ -285,13 +285,6 @@ async def generate_app(
             "correlation_id": correlation_id
         }
         
-        # Store task in Redis with TTL (24 hours)
-        await cache_manager.set(
-            f"task:{task_id}",
-            task_data,
-            ttl=86400
-        )
-        
         # Create AI request
         try:
             ai_request = AIRequest(
@@ -310,6 +303,14 @@ async def generate_app(
                 extra={
                     "ai_request": ai_request.dict()
                 }
+            )
+
+            # Persist initial task including request payload for recovery/retry
+            task_data["request_payload"] = ai_request.model_dump(mode="json")
+            await cache_manager.set(
+                f"task:{task_id}",
+                task_data,
+                ttl=86400
             )
             
         except Exception as e:
